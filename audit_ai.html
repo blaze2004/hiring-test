@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log Viewer</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            color: #333;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://cdnjs.cloudflare.com/ajax/libs/simple-icons/3.0.1/simple-icons.svg');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.15; /* 15% opacity for the background */
+            z-index: -1;
+        }
+        .page-container {
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-top: 0;
+            padding-top: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #4CAF50;
+        }
+        .filters-container {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding: 15px;
+            background-color: #f8f8f8;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            width: 250px;
+            margin-right: 20px;
+        }
+        .data-container {
+            flex: 1;
+        }
+        .control-item {
+            width: 100%;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #444;
+        }
+        select, input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            cursor: pointer;
+        }
+        th:hover {
+            background-color: #e6e6e6;
+        }
+        .timestamp-header {
+            position: relative;
+        }
+        .sort-icon {
+            margin-left: 5px;
+        }
+        tr:hover {
+            background-color: #f9f9f9;
+        }
+        td.empty {
+            font-style: italic;
+            color: #999;
+        }
+        .long-text {
+            max-width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .long-text:hover {
+            white-space: normal;
+            overflow: visible;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            gap: 5px;
+        }
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background-color: #fff;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .pagination button.active {
+            background-color: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        .pagination button:hover:not(.active) {
+            background-color: #f1f1f1;
+        }
+        .pagination button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .timeline {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .timeline-toggle {
+            cursor: pointer;
+            padding: 10px 15px;
+            margin-top: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .timeline-item {
+            position: relative;
+            padding-left: 30px;
+            margin-bottom: 20px;
+            border-left: 2px solid #4CAF50;
+            padding-bottom: 15px;
+        }
+        .timeline-dot {
+            position: absolute;
+            left: -10px;
+            top: 0;
+            width: 18px;
+            height: 18px;
+            background-color: #4CAF50;
+            border-radius: 50%;
+        }
+        .timeline-date {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+            color: #666;
+        }
+        .no-results {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        .action-type {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .create {
+            background-color: #e6f7ff;
+            color: #0066cc;
+        }
+        .update {
+            background-color: #fff7e6;
+            color: #d46b08;
+        }
+        .delete {
+            background-color: #fff1f0;
+            color: #cf1322;
+        }
+        .view {
+            background-color: #f6ffed;
+            color: #389e0d;
+        }
+        .login {
+            background-color: #f9f0ff;
+            color: #722ed1;
+        }
+        .logout {
+            background-color: #f0f5ff;
+            color: #1890ff;
+        }
+        .entity-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            background-color: #eee;
+            color: #333;
+        }
+        @media (max-width: 768px) {
+            .filters-container {
+                flex-direction: column;
+            }
+            .controls {
+                width: 100%;
+                margin-right: 0;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <h1>Audit Log Viewer</h1>
+        
+        <div class="filters-container">
+            <div class="controls">
+                <div class="control-item">
+                    <label for="actionType">Filter by Action Type:</label>
+                    <select id="actionType">
+                        <option value="">All Actions</option>
+                        <!-- Action types will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="control-item">
+                    <label for="user">Filter by User:</label>
+                    <select id="user">
+                        <option value="">All Users</option>
+                        <!-- Users will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="control-item">
+                    <label for="entityType">Filter by Entity Type:</label>
+                    <select id="entityType">
+                        <option value="">All Entities</option>
+                        <!-- Entity types will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="control-item">
+                    <label for="search">Search Logs:</label>
+                    <input type="text" id="search" placeholder="Search in logs...">
+                </div>
+            </div>
+            
+            <div class="data-container">
+                <div id="loading" class="loading">Loading audit logs...</div>
+                
+                <div id="tableContainer" style="display: none;">
+                    <table id="auditTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th class="timestamp-header" id="timestamp-header">
+                                    Timestamp <span class="sort-icon">↓</span>
+                                </th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Entity Type</th>
+                                <th>Entity ID</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTableBody">
+                            <!-- Table rows will be populated dynamically -->
+                        </tbody>
+                    </table>
+                    
+                    <div class="pagination" id="pagination">
+                        <!-- Pagination buttons will be added dynamically -->
+                    </div>
+                </div>
+                
+                <div id="noResults" class="no-results" style="display: none;">
+                    No audit logs match your criteria.
+                </div>
+                
+                <button id="timelineToggle" class="timeline-toggle">Show Timeline View</button>
+                
+                <div id="timeline" class="timeline">
+                    <!-- Timeline items will be populated dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global variables
+        const API_URL = 'https://67f00fb52a80b06b8896c3bf.mockapi.io/api/v1/audit_logs';
+        let allLogs = [];
+        let filteredLogs = [];
+        let currentPage = 1;
+        const logsPerPage = 10;
+        let sortDirection = 'desc'; // Default sort by timestamp descending
+        
+        // DOM elements
+        const actionTypeSelect = document.getElementById('actionType');
+        const userSelect = document.getElementById('user');
+        const entityTypeSelect = document.getElementById('entityType');
+        const searchInput = document.getElementById('search');
+        const auditTableBody = document.getElementById('auditTableBody');
+        const timestampHeader = document.getElementById('timestamp-header');
+        const paginationDiv = document.getElementById('pagination');
+        const loadingDiv = document.getElementById('loading');
+        const tableContainer = document.getElementById('tableContainer');
+        const noResultsDiv = document.getElementById('noResults');
+        const timelineToggle = document.getElementById('timelineToggle');
+        const timelineDiv = document.getElementById('timeline');
+        
+        // Fetch audit logs from API
+        async function fetchAuditLogs() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching audit logs:', error);
+                loadingDiv.textContent = 'Error loading audit logs. Please try again.';
+                return [];
+            }
+        }
+        
+        // Initialize the application
+        async function init() {
+            loadingDiv.style.display = 'block';
+            tableContainer.style.display = 'none';
+            
+            // Fetch audit logs
+            allLogs = await fetchAuditLogs();
+            
+            if (allLogs.length === 0) {
+                loadingDiv.textContent = 'No audit logs found.';
+                return;
+            }
+            
+            // Populate filter dropdowns
+            populateFilters();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Initial display of logs
+            sortLogsByTimestamp();
+            filterLogs();
+            
+            loadingDiv.style.display = 'none';
+            tableContainer.style.display = 'block';
+        }
+        
+        // Populate filter dropdowns
+        function populateFilters() {
+            const actionTypes = new Set();
+            const users = new Set();
+            const entityTypes = new Set();
+            
+            allLogs.forEach(log => {
+                if (log.action) actionTypes.add(log.action);
+                if (log.user) users.add(log.user);
+                if (log.entityType) entityTypes.add(log.entityType);
+            });
+            
+            // Populate action type dropdown
+            populateDropdown(actionTypeSelect, actionTypes);
+            
+            // Populate user dropdown
+            populateDropdown(userSelect, users);
+            
+            // Populate entity type dropdown
+            populateDropdown(entityTypeSelect, entityTypes);
+        }
+        
+        // Helper function to populate dropdowns
+        function populateDropdown(selectElement, values) {
+            const sortedValues = Array.from(values).sort();
+            sortedValues.forEach(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                selectElement.appendChild(option);
+            });
+        }
+        
+        // Set up event listeners
+        function setupEventListeners() {
+            // Filter change events
+            actionTypeSelect.addEventListener('change', handleFilterChange);
+            userSelect.addEventListener('change', handleFilterChange);
+            entityTypeSelect.addEventListener('change', handleFilterChange);
+            
+            // Search input event
+            searchInput.addEventListener('input', handleFilterChange);
+            
+            // Sort by timestamp
+            timestampHeader.addEventListener('click', toggleSortDirection);
+            
+            // Timeline toggle
+            timelineToggle.addEventListener('click', toggleTimelineView);
+        }
+        
+        // Handle filter change events
+        function handleFilterChange() {
+            currentPage = 1; // Reset to first page on filter change
+            filterLogs();
+        }
+        
+        // Filter logs based on selected criteria
+        function filterLogs() {
+            const actionType = actionTypeSelect.value;
+            const user = userSelect.value;
+            const entityType = entityTypeSelect.value;
+            const searchTerm = searchInput.value.toLowerCase();
+            
+            filteredLogs = allLogs.filter(log => {
+                // Filter by action type
+                if (actionType && log.action !== actionType) return false;
+                
+                // Filter by user
+                if (user && log.user !== user) return false;
+                
+                // Filter by entity type
+                if (entityType && log.entityType !== entityType) return false;
+                
+                // Search in all text fields
+                if (searchTerm) {
+                    const logString = JSON.stringify(log).toLowerCase();
+                    return logString.includes(searchTerm);
+                }
+                
+                return true;
+            });
+            
+            // Apply current sorting
+            sortLogsByTimestamp();
+            
+            // Update display
+            updateDisplay();
+        }
+        
+        // Sort logs by timestamp
+        function sortLogsByTimestamp() {
+            filteredLogs.sort((a, b) => {
+                const dateA = new Date(a.timestamp);
+                const dateB = new Date(b.timestamp);
+                
+                return sortDirection === 'asc'
+                    ? dateA - dateB
+                    : dateB - dateA;
+            });
+        }
+        
+        // Toggle sort direction
+        function toggleSortDirection() {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            const sortIcon = timestampHeader.querySelector('.sort-icon');
+            sortIcon.textContent = sortDirection === 'asc' ? '↑' : '↓';
+            
+            sortLogsByTimestamp();
+            updateDisplay();
+        }
+        
+        // Update table display
+        function updateDisplay() {
+            if (filteredLogs.length === 0) {
+                tableContainer.style.display = 'none';
+                noResultsDiv.style.display = 'block';
+                timelineToggle.style.display = 'none';
+                timelineDiv.style.display = 'none';
+                return;
+            }
+            
+            tableContainer.style.display = 'block';
+            noResultsDiv.style.display = 'none';
+            timelineToggle.style.display = 'block';
+            
+            // Calculate pagination
+            const totalPages = Math.ceil(filteredLogs.length / logsPerPage);
+            const startIndex = (currentPage - 1) * logsPerPage;
+            const endIndex = Math.min(startIndex + logsPerPage, filteredLogs.length);
+            const currentLogs = filteredLogs.slice(startIndex, endIndex);
+            
+            // Render table rows
+            renderTableRows(currentLogs);
+            
+            // Update pagination
+            renderPagination(totalPages);
+            
+            // Update timeline if visible
+            if (timelineDiv.style.display === 'block') {
+                renderTimeline();
+            }
+        }
+        
+        // Render table rows
+        function renderTableRows(logs) {
+            auditTableBody.innerHTML = '';
+            
+            logs.forEach(log => {
+                const row = document.createElement('tr');
+                
+                // Format timestamp
+                const timestamp = new Date(log.timestamp);
+                const formattedDate = timestamp.toLocaleString();
+                
+                // Create action type badge class
+                const actionClass = log.action ? log.action.toLowerCase() : '';
+                
+                row.innerHTML = `
+                    <td>${log.id || '<span class="empty">N/A</span>'}</td>
+                    <td>${formattedDate || '<span class="empty">N/A</span>'}</td>
+                    <td>${log.user || '<span class="empty">N/A</span>'}</td>
+                    <td>
+                        ${log.action 
+                            ? `<span class="action-type ${actionClass}">${log.action}</span>` 
+                            : '<span class="empty">N/A</span>'}
+                    </td>
+                    <td>
+                        ${log.entityType 
+                            ? `<span class="entity-badge">${log.entityType}</span>` 
+                            : '<span class="empty">N/A</span>'}
+                    </td>
+                    <td>${log.entityId || '<span class="empty">N/A</span>'}</td>
+                    <td class="long-text">${log.details || '<span class="empty">No details</span>'}</td>
+                `;
+                
+                auditTableBody.appendChild(row);
+            });
+        }
+        
+        // Render pagination controls
+        function renderPagination(totalPages) {
+            paginationDiv.innerHTML = '';
+            
+            if (totalPages <= 1) {
+                return;
+            }
+            
+            // Previous button
+            const prevButton = document.createElement('button');
+            prevButton.textContent = '← Prev';
+            prevButton.disabled = currentPage === 1;
+            prevButton.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    updateDisplay();
+                }
+            });
+            paginationDiv.appendChild(prevButton);
+            
+            // Page buttons
+            const maxVisiblePages = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+            
+            if (endPage - startPage + 1 < maxVisiblePages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const pageButton = document.createElement('button');
+                pageButton.textContent = i;
+                pageButton.classList.toggle('active', i === currentPage);
+                pageButton.addEventListener('click', () => {
+                    currentPage = i;
+                    updateDisplay();
+                });
+                paginationDiv.appendChild(pageButton);
+            }
+            
+            // Next button
+            const nextButton = document.createElement('button');
+            nextButton.textContent = 'Next →';
+            nextButton.disabled = currentPage === totalPages;
+            nextButton.addEventListener('click', () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    updateDisplay();
+                }
+            });
+            paginationDiv.appendChild(nextButton);
+        }
+        
+        // Toggle timeline view
+        function toggleTimelineView() {
+            const isVisible = timelineDiv.style.display === 'block';
+            
+            if (isVisible) {
+                timelineDiv.style.display = 'none';
+                timelineToggle.textContent = 'Show Timeline View';
+            } else {
+                renderTimeline();
+                timelineDiv.style.display = 'block';
+                timelineToggle.textContent = 'Hide Timeline View';
+            }
+        }
+        
+        // Render timeline
+        function renderTimeline() {
+            timelineDiv.innerHTML = '';
+            
+            // Group logs by date
+            const dateGroups = {};
+            
+            filteredLogs.forEach(log => {
+                const date = new Date(log.timestamp);
+                const dateStr = date.toDateString();
+                
+                if (!dateGroups[dateStr]) {
+                    dateGroups[dateStr] = [];
+                }
+                
+                dateGroups[dateStr].push(log);
+            });
+            
+            // Sort dates in reverse chronological order
+            const sortedDates = Object.keys(dateGroups).sort((a, b) => {
+                return new Date(b) - new Date(a);
+            });
+            
+            // Create timeline items
+            sortedDates.forEach(dateStr => {
+                const dateHeader = document.createElement('h3');
+                dateHeader.textContent = dateStr;
+                timelineDiv.appendChild(dateHeader);
+                
+                dateGroups[dateStr].forEach(log => {
+                    const timelineItem = document.createElement('div');
+                    timelineItem.className = 'timeline-item';
+                    
+                    const dot = document.createElement('div');
+                    dot.className = 'timeline-dot';
+                    timelineItem.appendChild(dot);
+                    
+                    const time = new Date(log.timestamp);
+                    const timeStr = time.toLocaleTimeString();
+                    
+                    const actionClass = log.action ? log.action.toLowerCase() : '';
+                    
+                    timelineItem.innerHTML += `
+                        <div class="timeline-date">${timeStr}</div>
+                        <div>
+                            <strong>${log.user || 'Unknown User'}</strong> 
+                            <span class="action-type ${actionClass}">${log.action || 'Unknown Action'}</span>
+                            ${log.entityType ? `<span class="entity-badge">${log.entityType}</span>` : ''}
+                            ${log.entityId ? `ID: ${log.entityId}` : ''}
+                        </div>
+                        <div class="timeline-details">${log.details || 'No details available'}</div>
+                    `;
+                    
+                    timelineDiv.appendChild(timelineItem);
+                });
+            });
+        }
+        
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
