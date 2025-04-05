@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log Viewer</title>
+    <link rel="stylesheet" href="audit.css">
+</head>
+<body>
+    <div class="page-container">
+        <h1>Audit Log Viewer</h1>
+        
+        <div class="filters-container">
+            <div class="controls">
+                <div class="control-item">
+                    <label for="actionType">Filter by Action Type:</label>
+                    <select id="actionType">
+                        <option value="">All Actions</option>
+                    </select>
+                </div>
+                <div class="control-item">
+                    <label for="user">Filter by User:</label>
+                    <select id="user">
+                        <option value="">All Users</option>
+                    </select>
+                </div>
+                <div class="control-item">
+                    <label for="entityType">Filter by Entity Type:</label>
+                    <select id="entityType">
+                        <option value="">All Entities</option>
+                    </select>
+                </div>
+                <div class="control-item">
+                    <label for="search">Search Logs:</label>
+                    <input type="text" id="search" placeholder="Search in logs...">
+                </div>
+            </div>
+
+            <div class="data-container">
+                <div id="loading" class="loading">Loading audit logs...</div>
+
+                <div id="tableContainer" style="display: none;">
+                    <table id="auditTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th class="timestamp-header" id="timestamp-header">
+                                    Timestamp <span class="sort-icon">↓</span>
+                                </th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Entity Type</th>
+                                <th>Entity ID</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTableBody"></tbody>
+                    </table>
+
+                    <div class="pagination" id="pagination"></div>
+                </div>
+
+                <div id="noResults" class="no-results" style="display: none;">
+                    No audit logs match your criteria.
+                </div>
+
+                <button id="timelineToggle" class="timeline-toggle">Show Timeline View</button>
+
+                <div id="timeline" class="timeline"></div>
+            </div>
+        </div>
+    </div>
+    <script src="audit.js"></script>
+</body>
+</html>
