@@ -21,10 +21,21 @@ const initializeDatabase=async () => {
 
 
     await db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        todo_id INTEGER,
+        before_data TEXT,
+        after_data TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
+      role TEXT DEFAULT 'user',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -43,8 +54,10 @@ const initializeDatabase=async () => {
 };
 
 const authenticateToken=(req, res, next) => {
-    const authHeader=req.headers['authorization'];
-    const token=authHeader&&authHeader.split(' ')[1];
+    // const authHeader=req.headers['authorization'];
+    // const token=authHeader&&authHeader.split(' ')[1];
+
+    const token = req.cookies?.token||req.headers['authorization']; // added cookies access
 
     if (!token) return res.status(401).json({ error: 'Access denied' });
 
@@ -57,9 +70,16 @@ const authenticateToken=(req, res, next) => {
     }
 };
 
+const requireAdmin = (req, res, next) => { // here i have created a middleware that checks whethere the given user is admin or not
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin access only' });
+    }
+    next();
+};
+
 app.post('/api/auth/register', async (req, res) => {
     try {
-        const { email, password }=req.body;
+        const { email, password , role }=req.body;
 
 
         const existingUser=await db.get('SELECT * FROM users WHERE email = ?', [email]);
@@ -73,16 +93,19 @@ app.post('/api/auth/register', async (req, res) => {
 
 
         const result=await db.run(
-            'INSERT INTO users (email, password) VALUES (?, ?)',
-            [email, hashedPassword]
+            'INSERT INTO users (email, password, role) VALUES (?, ?,?)',
+            [email, hashedPassword, role||'user']
         );
 
         const userId=result.lastID;
-        const newUser={ id: userId, email };
+        const newUser={ id: userId, email , role:role||'user' };
 
 
-        const token=jwt.sign({ id: userId }, process.env.JWT_SECRET);
-        res.status(201).json({ token, user: newUser });
+        const token=jwt.sign({ id: userId, role: role || 'user'}, process.env.JWT_SECRET); // i have added roles for selective logs for admin only so that only admin can see logs
+        res.cookie('token', token, {
+            httpOnly: true,
+            maxAge: 7 * 24 * 60 * 60 * 1000
+          }).status(201).json({ token, user: newUser });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Server error' });
@@ -106,8 +129,11 @@ app.post('/api/auth/login', async (req, res) => {
         }
 
 
-        const token=jwt.sign({ id: user.id }, process.env.JWT_SECRET);
-        res.status(200).json({ token, user: { id: user.id, email: user.email } });
+        const token=jwt.sign({ id: user.id , role: user.role }, process.env.JWT_SECRET);
+        res.cookie('token', token, {
+            httpOnly: true,
+            maxAge: 7 * 24 * 60 * 60 * 1000 
+        }).status(200).json({ token, user: { id: user.id, email: user.email } });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Server error' });
@@ -127,6 +153,12 @@ app.get('/api/todos', authenticateToken, async (req, res) => {
 app.post('/api/todos', authenticateToken, async (req, res) => {
     try {
         const { title, description }=req.body;
+
+        if (!title || !description) {
+            return res.status(400).json({ error: 'Title and description are required' });
+        } // added some checks to make the system more robust
+
+
         const newTodo={
             title,
             description,
@@ -136,12 +168,19 @@ app.post('/api/todos', authenticateToken, async (req, res) => {
 
         const result=await db.run(
             `INSERT INTO todos (title, description, completed, user_id)
-       VALUES (?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?)`,
             [newTodo.title, newTodo.description, newTodo.completed, newTodo.user_id]
         );
 
         const todoId=result.lastID;
         const createdTodo=await db.get('SELECT * FROM todos WHERE id = ?', [todoId]);
+
+        await db.run(
+            `INSERT INTO audit_logs (user_id, action, details)
+             VALUES (?, ?, ?,?)`,
+            [req.user.id, 'CREATE_TODO',todoId,  JSON.stringify(createdTodo)]
+        );
+
 
         res.status(201).json(createdTodo);
     } catch (error) {
@@ -175,11 +214,21 @@ app.put('/api/todos/:id', authenticateToken, async (req, res) => {
 
         await db.run(
             `UPDATE todos SET title = ?, description = ?, completed = ?
-       WHERE id = ? AND user_id = ?`,
+            WHERE id = ? AND user_id = ?`,
             [updatedTodo.title, updatedTodo.description, updatedTodo.completed, id, req.user.id]
         );
 
         const result=await db.get('SELECT * FROM todos WHERE id = ?', [id]);
+
+
+
+        // now I am adding difference to the logs
+        await db.run(
+            `INSERT INTO audit_logs (user_id, action, details)
+             VALUES (?, ?, ?,?)`,
+            [req.user.id, 'UPDATE_TODO',id,, JSON.stringify(currentTodo), JSON.stringify(updatedTodo)]
+        );
+
 
         res.status(200).json(result);
     } catch (error) {
@@ -208,12 +257,45 @@ app.delete('/api/todos/:id', authenticateToken, async (req, res) => {
             [id, req.user.id]
         );
 
+        // Audit log
+        await db.run(
+            `INSERT INTO audit_logs (user_id, action, details)
+            VALUES (?, ?, ?,?)`,
+            [req.user.id, 'DELETE_TODO', id,JSON.stringify(currentTodo)]
+        );
+
         res.status(200).json({ message: 'Todo deleted successfully' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Server error' });
     }
 });
+
+app.get('/api/audits', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { user, action } = req.query;
+        let query = 'SELECT * FROM audit_logs WHERE 1=1';
+        const params = [];
+
+        if (user) {
+            query += ' AND user_id = ?';
+            params.push(user);
+        }
+        if (action) {
+            query += ' AND action = ?';
+            params.push(action);
+        }
+
+        query += ' ORDER BY created_at DESC';
+
+        const logs = await db.all(query, params);
+        res.json(logs);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 
 const PORT=process.env.PORT||5000;
 const startServer=async () => {
